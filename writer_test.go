@@ -24,7 +24,7 @@ func TestNewWriter(t *testing.T) {
 
 }
 
-func TestWriteOneRecord(t *testing.T) {
+func TestWriteRecord(t *testing.T) {
 	buff := bytes.NewBuffer([]byte{})
 	w, err := newWriter(buff)
 	if err != nil {
@@ -51,7 +51,7 @@ func TestWriteOneRecord(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error creating orc.Reader from buffer: %s", err.Error())
 	}
-	cursor := r.Select("timestamp", "message", "fields")
+	cursor := r.Select("timestamp", "level", "message", "fields")
 	if !cursor.Stripes() {
 		t.Fatalf("cursor.Stripes() returned false, expected true")
 	}
@@ -68,4 +68,26 @@ func TestWriteOneRecord(t *testing.T) {
 		t.Errorf("Expected %v, got %v", entry.Timestamp.Local(), timestamp.Local())
 	}
 
+	val = row[1]
+	level, ok := val.(string)
+	if !ok {
+		t.Fatal("Message stored in ORC cannot be cast to string")
+	}
+	if entry.Level.String() != level {
+		t.Errorf("Expected %q, got %q", entry.Level, level)
+	}
+
+	val = row[2]
+	message, ok := val.(string)
+	if !ok {
+		t.Fatal("Message stored in ORC cannot be cast back to string")
+	}
+	if entry.Message != message {
+		t.Errorf("Expected %q, got %q", entry.Message, message)
+	}
+
+	val = row[3]
+	if val != nil {
+		t.Fatalf("Expected a nil field map, got %+v", val)
+	}
 }

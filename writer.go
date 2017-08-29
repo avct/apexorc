@@ -7,7 +7,7 @@ import (
 	"github.com/scritchley/orc"
 )
 
-const entrySchema = "struct<timestamp:timestamp,message:string,fields:map<string,string>>"
+const entrySchema = "struct<timestamp:timestamp,level:string,message:string,fields:map<string,string>>"
 
 func newWriter(w io.Writer) (*orc.Writer, error) {
 	schema, err := orc.ParseSchema(entrySchema)
@@ -30,5 +30,5 @@ func writeRecord(w *orc.Writer, e *log.Entry) error {
 		}
 		fields[k] = strVal
 	}
-	return w.Write(e.Timestamp, e.Message, fields)
+	return w.Write(e.Timestamp, e.Level.String(), e.Message, fields)
 }

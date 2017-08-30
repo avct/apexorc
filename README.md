@@ -10,7 +10,7 @@ This package provides a handler for github.com/apex/log that will cause ```Entry
   * message ```string```
   * fields ```map<string,string>```
   
-Note that the map type in fields only supports strings so you will have to make a string representation of any data you want to store their.  Note also that using apex's ```.WithError``` function is actually just a shortcut to creating a field called ```error``, which is where you'll find any errors you use.
+Note that the map type in fields only supports strings so you will have to make a string representation of any data you want to store their.  Note also that using apex's ```.WithError``` function is actually just a shortcut to creating a field called ```error```, which is where you'll find any errors you use.
 
 ## Example
 

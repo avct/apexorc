@@ -1,3 +1,5 @@
+// Package apexorc provides a handler for logging via
+// github.com/apex/log to an ORC file.
 package apexorc
 
 import (
@@ -8,12 +10,16 @@ import (
 	"github.com/scritchley/orc"
 )
 
+// Handler complies with the github.com/apex/log.Handler interface and
+// can be passed to github.com/apex/log.SetHandler
 type Handler struct {
 	mu     sync.Mutex
 	path   string
 	writer *orc.Writer
 }
 
+// NewHandler returns a Handler which can log to an ORC file at the
+// provided path.
 func NewHandler(path string) *Handler {
 	return &Handler{
 		path: path,
@@ -42,6 +48,8 @@ func (h *Handler) closeORCFile() error {
 	return nil
 }
 
+// HandleLog recieves new log.Entrys and writes them to an ORC file or
+// errors, as specified by the github.com/apex/log.Handler intefrace.
 func (h *Handler) HandleLog(e *log.Entry) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -55,6 +63,7 @@ func (h *Handler) HandleLog(e *log.Entry) error {
 	return writeRecord(h.writer, e)
 }
 
+// Close finalises the underlying ORC file.
 func (h *Handler) Close() error {
 	return h.closeORCFile()
 }

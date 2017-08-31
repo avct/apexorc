@@ -27,7 +27,7 @@ func NewHandler(path string) *Handler {
 }
 
 func (h *Handler) openORCFile() error {
-	f, err := os.Open(h.path)
+	f, err := os.Create(h.path)
 	if err != nil {
 		return err
 	}
@@ -65,5 +65,7 @@ func (h *Handler) HandleLog(e *log.Entry) error {
 
 // Close finalises the underlying ORC file.
 func (h *Handler) Close() error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	return h.closeORCFile()
 }

@@ -9,6 +9,10 @@ import (
 	"github.com/apex/log"
 )
 
+// Test that the NumericArchiveF implementation correctly pushes log
+// files back sequentially.  Foo.log becomes Foo.log.1, and should
+// Foo.log.1 exist, it is pushed back to Foo.log.2, and so on, and so
+// forth.
 func TestNumericArchiveF(t *testing.T) {
 	tmpdir, err := ioutil.TempDir("", "avct-apexorc-test-rotate")
 	if err != nil {

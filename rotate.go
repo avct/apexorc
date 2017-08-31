@@ -11,13 +11,28 @@ import (
 	"github.com/apex/log"
 )
 
+// CloserHandler is a specialisation of the
+// github.com/apex/log.Handler interface to support a Close function.
 type CloserHandler interface {
 	log.Handler
 	Close() error
 }
 
+// ArchiveFunc is a function type that is used to move an ORC log file
+// from its current path to another location as part of the log
+// rotation process.  The function will be called with the path of the
+// current log file, it is the responsibility of an implementation to
+// ensure that files are moved non-destructively, but the
+// RotatingHandler guarantees that the file will be closed before an
+// ArchvieFunc is called, and that no attemp to log will be made until
+// after it has completed its work.
 type ArchiveFunc func(oldPath string) error
 
+// RotatingHandler is a github.com/apex/log.Handler implementation
+// that uses a subordinate Handler to log to an ORC file, but
+// additionally supports on demand rotation of this file via a Rotate
+// function.  The RotatingHandler should only ever be constructed
+// using the NewRotatingHandler function.
 type RotatingHandler struct {
 	mu       sync.Mutex
 	path     string
@@ -25,6 +40,11 @@ type RotatingHandler struct {
 	archiveF ArchiveFunc
 }
 
+// NewRotatingHandler returns an instance of the RotatingHandler with
+// a subordinate ORC Handler logging to the provided path.  Should
+// Rotate be called then the provided ArchiveFunc will be used to move
+// the current ORC log file out of the way before creating a new one
+// at the same path and continuing to handle log entries.
 func NewRotatingHandler(path string, archiveF ArchiveFunc) *RotatingHandler {
 	handler := NewHandler(path)
 	return &RotatingHandler{
@@ -34,6 +54,7 @@ func NewRotatingHandler(path string, archiveF ArchiveFunc) *RotatingHandler {
 	}
 }
 
+// HandleLog passes logging duty through to the subordinate ORC Handler.
 func (h *RotatingHandler) HandleLog(e *log.Entry) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -41,6 +62,7 @@ func (h *RotatingHandler) HandleLog(e *log.Entry) error {
 	return h.handler.HandleLog(e)
 }
 
+// Rotate invokes the RotatingHandlers ArchiveFunc to move the current ORC log file out of the way and then creates a new Handler to deal with future logging.
 func (h *RotatingHandler) Rotate() error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -56,7 +78,8 @@ func (h *RotatingHandler) Rotate() error {
 
 // NumericArchiveF is an ArchiveFunc that archives historic log files
 // with numeric suffixes.  The lower the suffix the more recent the
-// file.
+// file.  Older archived files are pushed back to higher-number
+// suffixes as the new archives are created.
 func NumericArchiveF(oldPath string) error {
 	var newPath string
 

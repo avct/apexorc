@@ -36,3 +36,20 @@ func TestJournalHandleLog(t *testing.T) {
 		t.Errorf("Expected journal entry to have the message %q, but got %q", logMsg, e.Message)
 	}
 }
+
+func TestMakeJournalPathFromPath(t *testing.T) {
+	cases := []struct {
+		Input    string
+		Expected string
+	}{
+		{"/home/baron/log.orc", "/home/baron/log.jrnl"},
+		{"/home/baron/log", "/home/baron/log.jrnl"},
+		{"foo.xxes", "foo.jrnl"},
+	}
+	for cid, tcase := range cases {
+		journalpath := makeJournalPathFromPath(tcase.Input)
+		if journalpath != tcase.Expected {
+			t.Errorf("[Case %d] Got %q, expected %q", cid, journalpath, tcase.Expected)
+		}
+	}
+}

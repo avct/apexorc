@@ -1,6 +1,8 @@
 package apexorc
 
 import (
+	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path"
@@ -34,10 +36,11 @@ type ArchiveFunc func(oldPath string) error
 // function.  The RotatingHandler should only ever be constructed
 // using the NewRotatingHandler function.
 type RotatingHandler struct {
-	mu       sync.Mutex
-	path     string
-	handler  CloserHandler
-	archiveF ArchiveFunc
+	mu          sync.Mutex
+	journalPath string
+	path        string
+	handler     CloserHandler
+	archiveF    ArchiveFunc
 }
 
 // NewRotatingHandler returns an instance of the RotatingHandler with
@@ -45,13 +48,15 @@ type RotatingHandler struct {
 // Rotate be called then the provided ArchiveFunc will be used to move
 // the current ORC log file out of the way before creating a new one
 // at the same path and continuing to handle log entries.
-func NewRotatingHandler(path string, archiveF ArchiveFunc) *RotatingHandler {
-	handler := NewHandler(path)
+func NewRotatingHandler(path string, archiveF ArchiveFunc) (*RotatingHandler, error) {
+	journalPath := makeJournalPathFromPath(path)
+	handler, err := NewJournalHandlerForPath(journalPath)
 	return &RotatingHandler{
-		path:     path,
-		handler:  handler,
-		archiveF: archiveF,
-	}
+		journalPath: journalPath,
+		path:        path,
+		handler:     handler,
+		archiveF:    archiveF,
+	}, err
 }
 
 // HandleLog passes logging duty through to the subordinate ORC Handler.
@@ -60,6 +65,64 @@ func (h *RotatingHandler) HandleLog(e *log.Entry) error {
 	defer h.mu.Unlock()
 
 	return h.handler.HandleLog(e)
+}
+
+func (h *RotatingHandler) convertToORC(journalPath, orcPath string) {
+	logCtx := log.WithFields(
+		log.Fields{
+			"journalPath": journalPath,
+			"function":    "convertToORC",
+		})
+	keepTheJournal := func(p string) {
+		// OK, something bad is happening, let's move this
+		// journal file out of the way so we don't overwrite
+		// it next time around.
+		if err := h.archiveF(p); err != nil {
+			// You've lost your paddle, and this creek doesn't smell nice.
+			panic(err)
+		}
+	}
+	f, err := os.Open(journalPath)
+	if err != nil {
+		// Make as much noise as possible, but don't panic.
+		logCtx.WithError(err).Error("RotatingHandler couldn't open journal")
+		keepTheJournal(journalPath)
+		return
+	}
+
+	orchandler := NewHandler(orcPath)
+	scanner := bufio.NewScanner(f)
+	e := &log.Entry{}
+	for scanner.Scan() {
+		err := json.Unmarshal(scanner.Bytes(), e)
+		if err != nil {
+			logCtx.WithError(err).WithField("str", scanner.Text()).Error("Error unmarshalling during play back of journal")
+		}
+		err = orchandler.HandleLog(e)
+		if err != nil {
+			logCtx.WithError(err).Error("Error writing log entry to ORC")
+		}
+	}
+	err = orchandler.Close()
+	if err != nil {
+		logCtx.WithError(err).Error("Error closing ORC file")
+		// don't kill the journal
+		f.Close()
+		keepTheJournal(journalPath)
+		return
+	}
+	err = f.Close()
+	if err != nil {
+		logCtx.WithError(err).Error("Error closing the journel")
+	}
+
+	err = h.archiveF(orcPath)
+	if err != nil {
+		logCtx.WithError(err).Error("Error archiving ORC file")
+		// don't kill the journal
+	}
+	return
+
 }
 
 // Rotate invokes the RotatingHandlers ArchiveFunc to move the current ORC log file out of the way and then creates a new Handler to deal with future logging.
@@ -71,9 +134,16 @@ func (h *RotatingHandler) Rotate() error {
 	if err != nil {
 		return err
 	}
-	h.archiveF(h.path)
-	h.handler = NewHandler(h.path)
-	return nil
+	workingPath := h.journalPath + ".wrk.0"
+	err = os.Rename(h.journalPath, workingPath)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		go h.convertToORC(workingPath, h.path)
+	}()
+	h.handler, err = NewJournalHandlerForPath(h.journalPath)
+	return err
 }
 
 // NumericArchiveF is an ArchiveFunc that archives historic log files

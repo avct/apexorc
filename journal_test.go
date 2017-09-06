@@ -12,7 +12,7 @@ import (
 
 func TestJournalHandleLog(t *testing.T) {
 	buff := bytes.NewBuffer([]byte{})
-	handler := NewJournalHandler(buff)
+	handler := newJournalHandler(buff)
 	log.SetHandler(handler)
 	logMsg := "Facial Hair Failure"
 	testError := errors.New("Well bless my beard")

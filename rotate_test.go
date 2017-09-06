@@ -79,6 +79,10 @@ func TestNumericArchiveF(t *testing.T) {
 
 }
 
+// Journal files are converted to ORC by the convertToORC function.
+// Normally this is called in a goroutine after Rotate() completes,
+// ensuring that the old journal won't be written to concurrently, and
+// that logging can continue unhindered.
 func TestConvertToORC(t *testing.T) {
 	tmpdir, err := ioutil.TempDir("", "avct-apexorc-test-rotate-orc")
 	if err != nil {

@@ -50,7 +50,7 @@ type RotatingHandler struct {
 // at the same path and continuing to handle log entries.
 func NewRotatingHandler(path string, archiveF ArchiveFunc) (*RotatingHandler, error) {
 	journalPath := makeJournalPathFromPath(path)
-	handler, err := NewJournalHandlerForPath(journalPath)
+	handler, err := newJournalHandlerForPath(journalPath)
 	return &RotatingHandler{
 		journalPath: journalPath,
 		path:        path,
@@ -67,6 +67,10 @@ func (h *RotatingHandler) HandleLog(e *log.Entry) error {
 	return h.handler.HandleLog(e)
 }
 
+// Convert a journal file into an ORC file.  The intent is that this
+// should only happen once all logging activity on the journal file is
+// completed.  Therefore this is only invoked in a defered go routine
+// at the end of the Rotate() function.
 func (h *RotatingHandler) convertToORC(journalPath, orcPath string) {
 	logCtx := log.WithFields(
 		log.Fields{
@@ -142,7 +146,7 @@ func (h *RotatingHandler) Rotate() error {
 	defer func() {
 		go h.convertToORC(workingPath, h.path)
 	}()
-	h.handler, err = NewJournalHandlerForPath(h.journalPath)
+	h.handler, err = newJournalHandlerForPath(h.journalPath)
 	return err
 }
 

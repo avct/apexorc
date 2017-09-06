@@ -10,28 +10,26 @@ import (
 	"github.com/apex/log"
 )
 
-type JournalHandler struct {
+// journalHandler pushes log.Entry instances out to a line-oriented
+// JSON file (one valid JSON serialisation of a log.Entry per line).
+type journalHandler struct {
 	mu     sync.Mutex
 	writer io.Writer
 }
 
-func NewJournalHandler(w io.Writer) *JournalHandler {
-	return &JournalHandler{
-		// mu:     &sync.Mutex{},
-		writer: w}
+func newJournalHandler(w io.Writer) *journalHandler {
+	return &journalHandler{writer: w}
 }
 
-func NewJournalHandlerForPath(path string) (*JournalHandler, error) {
+func newJournalHandlerForPath(path string) (*journalHandler, error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return nil, err
 	}
-	return &JournalHandler{
-		// mu:     &sync.Mutex{},
-		writer: f}, nil
+	return &journalHandler{writer: f}, nil
 }
 
-func (h *JournalHandler) HandleLog(e *log.Entry) error {
+func (h *journalHandler) HandleLog(e *log.Entry) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	b, err := json.Marshal(e)
@@ -49,7 +47,7 @@ func (h *JournalHandler) HandleLog(e *log.Entry) error {
 	return nil
 }
 
-func (h *JournalHandler) Close() error {
+func (h *journalHandler) Close() error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	wc, ok := h.writer.(io.WriteCloser)

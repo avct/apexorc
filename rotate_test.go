@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/apex/log"
+	"github.com/scritchley/orc"
 )
 
 // Test that the NumericArchiveF implementation correctly pushes log
@@ -78,25 +79,68 @@ func TestNumericArchiveF(t *testing.T) {
 
 }
 
-// The RotatingHandler passes through HandleLog requests to a
-// subordinate Handler instance.
-func TestRotatingHandler(t *testing.T) {
-	tmpdir, err := ioutil.TempDir("", "avct-apexorc-test-rotate")
+// Journal files are converted to ORC by the convertToORC function.
+// Normally this is called in a goroutine after Rotate() completes,
+// ensuring that the old journal won't be written to concurrently, and
+// that logging can continue unhindered.
+func TestConvertToORC(t *testing.T) {
+	tmpdir, err := ioutil.TempDir("", "avct-apexorc-test-rotate-orc")
 	if err != nil {
 		t.Fatalf("Error from ioutil.TempDir: %s", err.Error())
 	}
-	defer os.RemoveAll(tmpdir)
+	//defer os.RemoveAll(tmpdir)
+
 	path := filepath.Join(tmpdir, "testlog.orc")
-	rotator := NewRotatingHandler(path, NumericArchiveF)
+	rotator, err := NewRotatingHandler(path, NumericArchiveF)
+	if err != nil {
+		t.Fatalf("Error creating rotating handler: %s", err)
+	}
 	log.SetHandler(rotator)
 	log.Info("Test 1")
-	err = rotator.Rotate()
-	if err != nil {
-		t.Fatalf("Error in rotation: %q", err.Error())
-	}
 	log.Info("Test 2")
-	err = rotator.Rotate()
+
+	// Obvisouly this locking usually happens inside rotate,
+	// without it we can get intermittent failures.
+	rotator.mu.Lock()
+	err = rotator.handler.Close()
 	if err != nil {
-		t.Fatalf("Error in rotation: %q", err.Error())
+		t.Fatalf("Error closing journal: %s", err)
 	}
+	rotator.mu.Unlock()
+
+	rotator.convertToORC(rotator.journalPath, rotator.path)
+	rotatedPath := rotator.path + ".1"
+	if _, err := os.Stat(rotatedPath); err != nil {
+		t.Fatalf("Error converting to ORC: %s", err)
+	}
+	f, err := orc.Open(rotatedPath)
+	if err != nil {
+		t.Fatalf("Error opening ORC file: %s", err)
+	}
+	cursor := f.Select("message")
+	if !cursor.Stripes() {
+		t.Fatalf("No strips in ORC file")
+	}
+	if !cursor.Next() {
+		t.Fatal("Cursor.Next() returned false, expected true")
+	}
+	row := cursor.Row()
+	logMsg := "Test 1"
+	msg, _ := row[0].(string)
+	if msg != logMsg {
+		t.Errorf("Expected %q, got %q", logMsg, msg)
+	}
+
+	if !cursor.Next() {
+		t.Fatal("Cursor.Next() returned false, expected true")
+	}
+	row = cursor.Row()
+	logMsg = "Test 2"
+	msg, _ = row[0].(string)
+	if msg != logMsg {
+		t.Errorf("Expected %q, got %q", logMsg, msg)
+	}
+
+	f.Close()
+
 }

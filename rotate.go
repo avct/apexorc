@@ -41,6 +41,7 @@ type RotatingHandler struct {
 	path        string
 	handler     CloserHandler
 	archiveF    ArchiveFunc
+	wg          sync.WaitGroup
 }
 
 // NewRotatingHandler returns an instance of the RotatingHandler with
@@ -82,6 +83,7 @@ func (h *RotatingHandler) convertToORC(journalPath, orcPath string) {
 		// journal file out of the way so we don't overwrite
 		// it next time around.
 		if err := h.archiveF(p); err != nil {
+			h.wg.Done()
 			// You've lost your paddle, and this creek doesn't smell nice.
 			panic(err)
 		}
@@ -91,6 +93,7 @@ func (h *RotatingHandler) convertToORC(journalPath, orcPath string) {
 		// Make as much noise as possible, but don't panic.
 		logCtx.WithError(err).Error("RotatingHandler couldn't open journal")
 		keepTheJournal(journalPath)
+		h.wg.Done()
 		return
 	}
 
@@ -113,6 +116,7 @@ func (h *RotatingHandler) convertToORC(journalPath, orcPath string) {
 		// don't kill the journal
 		f.Close()
 		keepTheJournal(journalPath)
+		h.wg.Done()
 		return
 	}
 	err = f.Close()
@@ -125,6 +129,7 @@ func (h *RotatingHandler) convertToORC(journalPath, orcPath string) {
 		logCtx.WithError(err).Error("Error archiving ORC file")
 		// don't kill the journal
 	}
+	h.wg.Done()
 	return
 
 }
@@ -144,6 +149,7 @@ func (h *RotatingHandler) Rotate() error {
 		return err
 	}
 	defer func() {
+		h.wg.Add(1)
 		go h.convertToORC(workingPath, h.path)
 	}()
 	h.handler, err = newJournalHandlerForPath(h.journalPath)

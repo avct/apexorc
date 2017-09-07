@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -12,6 +13,30 @@ import (
 
 	"github.com/apex/log"
 )
+
+// CriticalRotationError is a special kind of error that can be
+// returned by the Rotate() function of a RotatingHandler.  Should you
+// encounter a CriticalRotationError you should assume that logging is
+// no longer working and decided how to proceed.
+//
+// You can check an error to see if it is a CriticalRotationError by
+// passing it to IsCriticalRotationError:
+type CriticalRotationError struct {
+	err error
+}
+
+// The error built-in interface type is the conventional interface for
+// representing an error condition, with the nil value representing no error.
+func (c CriticalRotationError) Error() string {
+	return c.err.Error()
+}
+
+// IsCriticalRotationError returns true if the error passed to it is a
+// CriticalRotationErorr.
+func IsCriticalRotationError(e error) bool {
+	_, ok := e.(CriticalRotationError)
+	return ok
+}
 
 // CloserHandler is a specialisation of the
 // github.com/apex/log.Handler interface to support a Close function.
@@ -37,6 +62,7 @@ type ArchiveFunc func(oldPath string) error
 // using the NewRotatingHandler function.
 type RotatingHandler struct {
 	mu          sync.Mutex
+	cmu         sync.Mutex
 	journalPath string
 	path        string
 	handler     CloserHandler
@@ -69,35 +95,28 @@ func (h *RotatingHandler) HandleLog(e *log.Entry) error {
 
 // Convert a journal file into an ORC file.  The intent is that this
 // should only happen once all logging activity on the journal file is
-// completed.  Therefore this is only invoked in a defered go routine
-// at the end of the Rotate() function.
-func (h *RotatingHandler) convertToORC(journalPath, orcPath string) {
+// completed.
+func (h *RotatingHandler) convertToORC(journalPath, orcPath string) error {
+	h.cmu.Lock()
+	defer h.cmu.Unlock()
+
 	logCtx := log.WithFields(
 		log.Fields{
 			"journalPath": journalPath,
 			"function":    "convertToORC",
 		})
-	keepTheJournal := func(p string) {
-		// OK, something bad is happening, let's move this
-		// journal file out of the way so we don't overwrite
-		// it next time around.
-		if err := h.archiveF(p); err != nil {
-			// You've lost your paddle, and this creek doesn't smell nice.
-			panic(err)
-		}
-	}
+
 	f, err := os.Open(journalPath)
 	if err != nil {
-		// Make as much noise as possible, but don't panic.
-		logCtx.WithError(err).Error("RotatingHandler couldn't open journal")
-		keepTheJournal(journalPath)
-		return
+		return err
 	}
 
 	orchandler := NewHandler(orcPath)
 	scanner := bufio.NewScanner(f)
 	e := &log.Entry{}
 	for scanner.Scan() {
+		// Note, per line error are logged, but otherwise
+		// ignored - we want to convert every line we can.
 		err := json.Unmarshal(scanner.Bytes(), e)
 		if err != nil {
 			logCtx.WithError(err).WithField("str", scanner.Text()).Error("Error unmarshalling during play back of journal")
@@ -109,45 +128,53 @@ func (h *RotatingHandler) convertToORC(journalPath, orcPath string) {
 	}
 	err = orchandler.Close()
 	if err != nil {
-		logCtx.WithError(err).Error("Error closing ORC file")
-		// don't kill the journal
-		f.Close()
-		keepTheJournal(journalPath)
-		return
+		logCtx.WithError(err).Error("Error closing the ORC file")
+		return err
 	}
 	err = f.Close()
 	if err != nil {
-		logCtx.WithError(err).Error("Error closing the journel")
+		logCtx.WithError(err).Error("Error closing the journal")
+		return err
 	}
 
 	err = h.archiveF(orcPath)
 	if err != nil {
 		logCtx.WithError(err).Error("Error archiving ORC file")
-		// don't kill the journal
+		return err
 	}
-	return
 
+	err = os.RemoveAll(path.Base(journalPath))
+	if err != nil {
+		logCtx.WithError(err).Error("Unable to remove temporary journal")
+	}
+	return nil
 }
 
-// Rotate invokes the RotatingHandlers ArchiveFunc to move the current ORC log file out of the way and then creates a new Handler to deal with future logging.
+// Rotate is a blocking call and will not return until an ORC file has been created.  Logging will only be blocked for the earliest part of the process, but subsequent calls to Rotate will not complete until earlier ones have already completed.
+// The caller should check any returned error using IsCriticalRotationError.  If a CriticalRotationError is returned, logging will no longer work as the handler will not be unlocked.  It is the callers responsiblity to decide on a course of action at that point (when all else fails, panic).
 func (h *RotatingHandler) Rotate() error {
 	h.mu.Lock()
-	defer h.mu.Unlock()
-
 	err := h.handler.Close()
 	if err != nil {
-		return err
+		return CriticalRotationError{err}
 	}
-	workingPath := h.journalPath + ".wrk.0"
+	dir, err := ioutil.TempDir("", "avocet-journal-")
+	if err != nil {
+		return CriticalRotationError{err}
+	}
+	workingPath := path.Join(dir, "working.jrnl")
 	err = os.Rename(h.journalPath, workingPath)
 	if err != nil {
-		return err
+		return CriticalRotationError{err}
 	}
-	defer func() {
-		go h.convertToORC(workingPath, h.path)
-	}()
+
 	h.handler, err = newJournalHandlerForPath(h.journalPath)
-	return err
+	if err != nil {
+		return CriticalRotationError{err}
+	}
+	h.mu.Unlock()
+	// At this point logging can continue
+	return h.convertToORC(workingPath, h.path)
 }
 
 // NumericArchiveF is an ArchiveFunc that archives historic log files

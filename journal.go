@@ -36,11 +36,8 @@ func (h *journalHandler) HandleLog(e *log.Entry) error {
 	if err != nil {
 		return err
 	}
+	b = append(b, '\n')
 	_, err = h.writer.Write(b)
-	if err != nil {
-		return err
-	}
-	_, err = h.writer.Write([]byte{'\n'})
 	if err != nil {
 		return err
 	}

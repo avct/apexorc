@@ -61,8 +61,17 @@ type ArchiveFunc func(oldPath string) error
 // function.  The RotatingHandler should only ever be constructed
 // using the NewRotatingHandler function.
 type RotatingHandler struct {
-	mu          sync.Mutex
-	cmu         sync.Mutex
+	mu sync.Mutex // mu is the Mutex that is used in all
+	// apex log handlers, it prevents
+	// out-of-order logging.
+
+	cmu sync.Mutex // cmu is a Mutex that protect the
+	// process of converting a rotated log
+	// journal into an ORC file.  By
+	// separating this from the rotation
+	// itself we can allow logging to
+	// continue as soon as we've moved the
+	// journal to a rotated position.
 	journalPath string
 	path        string
 	handler     CloserHandler
@@ -97,7 +106,10 @@ func (h *RotatingHandler) HandleLog(e *log.Entry) error {
 // should only happen once all logging activity on the journal file is
 // completed.
 func (h *RotatingHandler) convertToORC(journalPath, orcPath string) error {
-	h.cmu.Lock()
+	h.cmu.Lock() // We lock out further conversion processes until
+	// this one is finished.  In practise contention
+	// should only occur if we terminate the logd
+	// process.
 	defer h.cmu.Unlock()
 
 	logCtx := log.WithFields(

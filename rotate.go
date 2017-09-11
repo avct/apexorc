@@ -22,14 +22,14 @@ import (
 // You can check an error to see if it is a CriticalRotationError by
 // passing it to IsCriticalRotationError:
 type CriticalRotationError struct {
-	err error
+	error
 }
 
-// The error built-in interface type is the conventional interface for
-// representing an error condition, with the nil value representing no error.
-func (c CriticalRotationError) Error() string {
-	return c.err.Error()
-}
+// // The error built-in interface type is the conventional interface for
+// // representing an error condition, with the nil value representing no error.
+// func (c CriticalRotationError) Error() string {
+// 	return c.err.Error()
+// }
 
 // IsCriticalRotationError returns true if the error passed to it is a
 // CriticalRotationErorr.

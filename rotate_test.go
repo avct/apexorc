@@ -1,6 +1,7 @@
 package apexorc
 
 import (
+	"errors"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -9,6 +10,17 @@ import (
 	"github.com/apex/log"
 	"github.com/scritchley/orc"
 )
+
+func TestIsCriticalRotationError(t *testing.T) {
+	var err error = CriticalRotationError{errors.New("foo")}
+	if !IsCriticalRotationError(err) {
+		t.Errorf("Expected false, got true")
+	}
+	err = errors.New("Bar")
+	if IsCriticalRotationError(err) {
+		t.Errorf("Expected true, got false")
+	}
+}
 
 // Test that the NumericArchiveF implementation correctly pushes log
 // files back sequentially.  Foo.log becomes Foo.log.1, and should
@@ -79,16 +91,14 @@ func TestNumericArchiveF(t *testing.T) {
 
 }
 
-// Journal files are converted to ORC by the convertToORC function.
-// Normally this is called in a goroutine after Rotate() completes,
-// ensuring that the old journal won't be written to concurrently, and
-// that logging can continue unhindered.
-func TestConvertToORC(t *testing.T) {
+// Calling Rotate() casuse the journal file to be converted to ORC by
+// the convertToORC function.
+func TestRotateAndConvertToORC(t *testing.T) {
 	tmpdir, err := ioutil.TempDir("", "avct-apexorc-test-rotate-orc")
 	if err != nil {
 		t.Fatalf("Error from ioutil.TempDir: %s", err.Error())
 	}
-	//defer os.RemoveAll(tmpdir)
+	defer os.RemoveAll(tmpdir)
 
 	path := filepath.Join(tmpdir, "testlog.orc")
 	rotator, err := NewRotatingHandler(path, NumericArchiveF)
@@ -99,16 +109,10 @@ func TestConvertToORC(t *testing.T) {
 	log.Info("Test 1")
 	log.Info("Test 2")
 
-	// Obvisouly this locking usually happens inside rotate,
-	// without it we can get intermittent failures.
-	rotator.mu.Lock()
-	err = rotator.handler.Close()
+	err = rotator.Rotate()
 	if err != nil {
-		t.Fatalf("Error closing journal: %s", err)
+		t.Fatalf("Error rotating: %s", err)
 	}
-	rotator.mu.Unlock()
-
-	rotator.convertToORC(rotator.journalPath, rotator.path)
 	rotatedPath := rotator.path + ".1"
 	if _, err := os.Stat(rotatedPath); err != nil {
 		t.Fatalf("Error converting to ORC: %s", err)

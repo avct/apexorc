@@ -107,9 +107,11 @@ func (h *RotatingHandler) HandleLog(e *log.Entry) error {
 // completed.
 func (h *RotatingHandler) convertToORC(journalPath, orcPath string) error {
 	h.cmu.Lock() // We lock out further conversion processes until
-	// this one is finished.  In practise contention
-	// should only occur if we terminate the logd
-	// process.
+	// this one is finished.  The conusmer of this library is
+	// expected to take care that calls to Rotate() usually happen
+	// at intervals that exceed the time taken to completee
+	// conversion so that a backlog of conversion processes
+	// doesn't build-up.
 	defer h.cmu.Unlock()
 
 	logCtx := log.WithFields(

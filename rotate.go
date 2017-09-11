@@ -160,6 +160,7 @@ func (h *RotatingHandler) convertToORC(journalPath, orcPath string) error {
 	err = os.RemoveAll(path.Base(journalPath))
 	if err != nil {
 		logCtx.WithError(err).Error("Unable to remove temporary journal")
+		return err
 	}
 	return nil
 }

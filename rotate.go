@@ -165,8 +165,16 @@ func (h *RotatingHandler) convertToORC(journalPath, orcPath string) error {
 	return nil
 }
 
-// Rotate is a blocking call and will not return until an ORC file has been created.  Logging will only be blocked for the earliest part of the process, but subsequent calls to Rotate will not complete until earlier ones have already completed.
-// The caller should check any returned error using IsCriticalRotationError.  If a CriticalRotationError is returned, logging will no longer work as the handler will not be unlocked.  It is the callers responsiblity to decide on a course of action at that point (when all else fails, panic).
+// Rotate is a blocking call and will not return until an ORC file has
+// been created.  Logging will only be blocked for the earliest part
+// of the process, but subsequent calls to Rotate will not complete
+// until earlier ones have already completed.
+//
+// The caller should check any returned error using
+// IsCriticalRotationError.  If a CriticalRotationError is returned,
+// logging will no longer work as the handler will not be unlocked.
+// It is the callers responsiblity to decide on a course of action at
+// that point (when all else fails, panic).
 func (h *RotatingHandler) Rotate() error {
 	h.mu.Lock()
 	err := h.handler.Close()

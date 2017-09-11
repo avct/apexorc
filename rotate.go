@@ -17,7 +17,7 @@ import (
 // CriticalRotationError is a special kind of error that can be
 // returned by the Rotate() function of a RotatingHandler.  Should you
 // encounter a CriticalRotationError you should assume that logging is
-// no longer working and decided how to proceed.
+// no longer working and decide how to proceed.
 //
 // You can check an error to see if it is a CriticalRotationError by
 // passing it to IsCriticalRotationError:

@@ -55,5 +55,15 @@ func TestHandleLog(t *testing.T) {
 	if msg != logMsg {
 		t.Errorf("Expected %q, got %q", logMsg, msg)
 	}
+}
 
+// If we never call HandleLog we won't have an ORC writer to hand,
+// this shouldn't cause a panic. Note this is testing a problem that
+// really occured.
+func TestCloseOnUnusedHandler(t *testing.T) {
+	handler := NewHandler("Path")
+	err := handler.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
 }

@@ -40,11 +40,14 @@ func (h *Handler) openORCFile() error {
 }
 
 func (h *Handler) closeORCFile() error {
-	err := h.writer.Close()
-	if err != nil {
-		return err
+	// If we never call HandleLog then there'll be no writer.
+	if h.writer != nil {
+		err := h.writer.Close()
+		if err != nil {
+			return err
+		}
+		h.writer = nil
 	}
-	h.writer = nil
 	return nil
 }
 

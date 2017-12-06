@@ -127,10 +127,10 @@ func (h *RotatingHandler) convertToORC(journalPath, orcPath string) error {
 
 	orchandler := NewHandler(orcPath)
 	scanner := bufio.NewScanner(f)
-	e := &log.Entry{}
 	for scanner.Scan() {
 		// Note, per line error are logged, but otherwise
 		// ignored - we want to convert every line we can.
+		e := &log.Entry{}
 		err := json.Unmarshal(scanner.Bytes(), e)
 		if err != nil {
 			logCtx.WithError(err).WithField("str", scanner.Text()).Error("Error unmarshalling during play back of journal")
@@ -139,6 +139,9 @@ func (h *RotatingHandler) convertToORC(journalPath, orcPath string) error {
 		if err != nil {
 			logCtx.WithError(err).Error("Error writing log entry to ORC")
 		}
+	}
+	if err = scanner.Err(); err != nil {
+		logCtx.WithError(err).Error("Error scanning journal")
 	}
 	err = orchandler.Close()
 	if err != nil {

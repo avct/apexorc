@@ -140,6 +140,7 @@ func (h *RotatingHandler) convertToORC(journalPath, orcPath string) error {
 			logCtx.WithError(err).Error("Error writing log entry to ORC")
 		}
 	}
+
 	err = orchandler.Close()
 	if err != nil {
 		logCtx.WithError(err).Error("Error closing the ORC file")
@@ -150,6 +151,10 @@ func (h *RotatingHandler) convertToORC(journalPath, orcPath string) error {
 		logCtx.WithError(err).Error("Error closing the journal")
 		return err
 	}
+	err = os.RemoveAll(path.Base(journalPath))
+	if err != nil {
+		logCtx.WithError(err).Error("Unable to remove temporary journal")
+	}
 
 	err = h.archiveF(orcPath)
 	if err != nil {
@@ -157,11 +162,6 @@ func (h *RotatingHandler) convertToORC(journalPath, orcPath string) error {
 		return err
 	}
 
-	err = os.RemoveAll(path.Base(journalPath))
-	if err != nil {
-		logCtx.WithError(err).Error("Unable to remove temporary journal")
-		return err
-	}
 	return nil
 }
 

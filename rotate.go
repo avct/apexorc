@@ -61,6 +61,8 @@ type ArchiveFunc func(oldPath string) error
 // function.  The RotatingHandler should only ever be constructed
 // using the NewRotatingHandler function.
 type RotatingHandler struct {
+	alwaysRemoveTempFiles bool
+
 	mu sync.Mutex // mu is the Mutex that is used in all
 	// apex log handlers, it prevents
 	// out-of-order logging.
@@ -94,6 +96,12 @@ func NewRotatingHandler(path string, archiveF ArchiveFunc) (*RotatingHandler, er
 	}, err
 }
 
+// EnableAlwaysRemoveTempFiles ensures that we always remove temp files even if we were
+// unable to convert to ORC
+func (h *RotatingHandler) EnableAlwaysRemoveTempFiles() {
+	h.alwaysRemoveTempFiles = true
+}
+
 // HandleLog passes logging duty through to the subordinate ORC Handler.
 func (h *RotatingHandler) HandleLog(e *log.Entry) error {
 	h.mu.Lock()
@@ -119,6 +127,15 @@ func (h *RotatingHandler) convertToORC(journalPath, orcPath string) error {
 			"journalPath": journalPath,
 			"function":    "convertToORC",
 		})
+
+	if h.alwaysRemoveTempFiles {
+		defer func() {
+			err := os.RemoveAll(path.Base(journalPath))
+			if err != nil {
+				logCtx.WithError(err).Error("Unable to remove temporary journal")
+			}
+		}()
+	}
 
 	f, err := os.Open(journalPath)
 	if err != nil {
@@ -155,9 +172,12 @@ func (h *RotatingHandler) convertToORC(journalPath, orcPath string) error {
 		logCtx.WithError(err).Error("Error closing the journal")
 		return err
 	}
-	err = os.RemoveAll(path.Base(journalPath))
-	if err != nil {
-		logCtx.WithError(err).Error("Unable to remove temporary journal")
+
+	if !h.alwaysRemoveTempFiles {
+		err = os.RemoveAll(path.Base(journalPath))
+		if err != nil {
+			logCtx.WithError(err).Error("Unable to remove temporary journal")
+		}
 	}
 
 	err = h.archiveF(orcPath)
